@@ -5,6 +5,7 @@ import MapComponent from '@/components/Map';
 import Filters from '@/components/Filters';
 import RestaurantList from '@/components/RestaurantList';
 import RestaurantDetail from '@/components/RestaurantDetail';
+import AddressSearch from '@/components/AddressSearch';
 import { searchRestaurants, getRestaurantDetails, Restaurant, RestaurantDetail as RestaurantDetailType } from '@/lib/api';
 
 // Default center: San Francisco Bay Area (Union Square)
@@ -21,10 +22,21 @@ export default function HomePage() {
   const [center, setCenter] = useState(DEFAULT_CENTER);
   const [maxPrice, setMaxPrice] = useState<number | null>(null);
   const [cuisineType, setCuisineType] = useState('');
-  const [radius, setRadius] = useState(1609); // 1 mile in meters (default)
+  const [radius, setRadius] = useState(322); // 0.2 miles in meters (default)
   
   // Filters visibility state
   const [showFilters, setShowFilters] = useState(true);
+  // Header visibility state
+  const [showHeader, setShowHeader] = useState(true);
+  
+  // Force map resize when header/filters visibility changes
+  useEffect(() => {
+    // Trigger a window resize event after a short delay to force map resize
+    const timer = setTimeout(() => {
+      window.dispatchEvent(new Event('resize'));
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [showHeader, showFilters]);
 
   // Search restaurants
   const performSearch = useCallback(async () => {
@@ -68,16 +80,47 @@ export default function HomePage() {
     }
   };
 
+  // Handle address search
+  const handleAddressFound = (location: { lat: number; lng: number; address: string }) => {
+    setCenter({ lat: location.lat, lng: location.lng });
+    // performSearch will be called automatically via useEffect when center changes
+  };
+
 
   return (
-    <div className="h-screen flex flex-col">
+    <div className="h-screen flex flex-col bg-gray-100">
       {/* Header */}
-      <header className="bg-white shadow-sm border-b px-6 py-4">
-        <h1 className="text-2xl font-bold text-gray-900">Restaurant Finder</h1>
-        <p className="text-sm text-gray-600 mt-1">
-          Discover restaurants with accurate filters
-        </p>
-      </header>
+      {showHeader ? (
+        <header className="bg-white shadow-sm border-b px-6 py-4">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">Restaurant Finder</h1>
+              <p className="text-sm text-gray-600 mt-1">
+                Discover restaurants with accurate filters
+              </p>
+            </div>
+            <button
+              onClick={() => setShowHeader(false)}
+              className="text-gray-400 hover:text-gray-600 transition-colors text-lg font-bold leading-none"
+              aria-label="Hide header"
+            >
+              ×
+            </button>
+          </div>
+          <AddressSearch onLocationFound={handleAddressFound} />
+        </header>
+      ) : (
+        <div className="relative">
+          <button
+            onClick={() => setShowHeader(true)}
+            className="absolute top-2 right-2 z-50 px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700 hover:bg-white transition-colors flex items-center justify-center gap-1 rounded border border-gray-200 bg-gray-50 shadow-sm"
+            aria-label="Show header"
+          >
+            <span>Show header (and search bar)</span>
+            <span className="text-gray-400">⌃</span>
+          </button>
+        </div>
+      )}
 
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
@@ -160,7 +203,7 @@ export default function HomePage() {
         </div>
 
         {/* Map */}
-        <div className="flex-1 relative">
+        <div className="flex-1 relative bg-gray-100">
           {loading && restaurants.length > 0 && (
             <div className="absolute top-4 left-4 z-10 bg-white px-4 py-2 rounded-lg shadow-md">
               <p className="text-sm text-gray-600">Updating results...</p>

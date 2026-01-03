@@ -64,6 +64,76 @@ async def health() -> dict:
     return {"status": "ok"}
 
 
+@app.get("/autocomplete")
+async def autocomplete_places(input: str = Query(..., description="Input text for autocomplete")):
+    """
+    Get place suggestions using Google Places Autocomplete API.
+    """
+    try:
+        autocomplete_result = gmaps.places_autocomplete(input)
+        
+        suggestions = []
+        for prediction in autocomplete_result[:5]:  # Limit to 5 suggestions
+            suggestions.append({
+                "place_id": prediction.get("place_id"),
+                "description": prediction.get("description"),
+                "main_text": prediction.get("structured_formatting", {}).get("main_text", ""),
+                "secondary_text": prediction.get("structured_formatting", {}).get("secondary_text", ""),
+            })
+        
+        return {"predictions": suggestions}
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error getting autocomplete suggestions: {str(e)}")
+
+
+@app.get("/geocode")
+async def geocode_address(address: str = Query(..., description="Address or location to geocode")):
+    """
+    Geocode an address or location string to get coordinates (lat, lng).
+    """
+    try:
+        geocode_result = gmaps.geocode(address)
+        
+        if not geocode_result:
+            raise HTTPException(status_code=404, detail="Address not found")
+        
+        location = geocode_result[0]["geometry"]["location"]
+        
+        return {
+            "lat": location["lat"],
+            "lng": location["lng"],
+            "formatted_address": geocode_result[0].get("formatted_address"),
+        }
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error geocoding address: {str(e)}")
+
+
+@app.get("/geocode-by-place-id")
+async def geocode_by_place_id(place_id: str = Query(..., description="Google Places place_id")):
+    """
+    Geocode a place using its place_id to get coordinates.
+    """
+    try:
+        place_details = gmaps.place(place_id=place_id, fields=["geometry", "formatted_address"])
+        
+        result = place_details.get("result", {})
+        location = result.get("geometry", {}).get("location", {})
+        
+        if not location:
+            raise HTTPException(status_code=404, detail="Place not found")
+        
+        return {
+            "lat": location["lat"],
+            "lng": location["lng"],
+            "formatted_address": result.get("formatted_address", ""),
+        }
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error geocoding place: {str(e)}")
+
+
 @app.get("/restaurants", response_model=dict)
 async def list_restaurants(
     lat: float = Query(..., description="Latitude of search center"),

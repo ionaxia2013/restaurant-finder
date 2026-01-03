@@ -85,3 +85,75 @@ export async function getRestaurantDetails(placeId: string): Promise<RestaurantD
   return response.json();
 }
 
+export interface GeocodeResponse {
+  lat: number;
+  lng: number;
+  formatted_address: string;
+}
+
+export interface AutocompletePrediction {
+  place_id: string;
+  description: string;
+  main_text: string;
+  secondary_text: string;
+}
+
+export interface AutocompleteResponse {
+  predictions: AutocompletePrediction[];
+}
+
+/**
+ * Get autocomplete suggestions for an address/place
+ */
+export async function getAutocompleteSuggestions(input: string): Promise<AutocompleteResponse> {
+  if (!input.trim()) {
+    return { predictions: [] };
+  }
+
+  const queryParams = new URLSearchParams();
+  queryParams.set('input', input);
+
+  const response = await fetch(`${API_BASE_URL}/autocomplete?${queryParams.toString()}`);
+  
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Failed to get suggestions' }));
+    throw new Error(error.detail || 'Failed to get suggestions');
+  }
+
+  return response.json();
+}
+
+/**
+ * Geocode an address to get coordinates
+ */
+export async function geocodeAddress(address: string): Promise<GeocodeResponse> {
+  const queryParams = new URLSearchParams();
+  queryParams.set('address', address);
+
+  const response = await fetch(`${API_BASE_URL}/geocode?${queryParams.toString()}`);
+  
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Failed to geocode address' }));
+    throw new Error(error.detail || 'Failed to geocode address');
+  }
+
+  return response.json();
+}
+
+/**
+ * Geocode a place using its place_id
+ */
+export async function geocodeByPlaceId(placeId: string): Promise<GeocodeResponse> {
+  const queryParams = new URLSearchParams();
+  queryParams.set('place_id', placeId);
+
+  const response = await fetch(`${API_BASE_URL}/geocode-by-place-id?${queryParams.toString()}`);
+  
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Failed to geocode place' }));
+    throw new Error(error.detail || 'Failed to geocode place');
+  }
+
+  return response.json();
+}
+

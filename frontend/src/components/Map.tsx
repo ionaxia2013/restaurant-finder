@@ -1,7 +1,7 @@
 'use client';
 
-import { useCallback, useMemo } from 'react';
-import Map, { Marker, Popup } from 'react-map-gl';
+import { useCallback, useMemo, useState, useEffect, useRef } from 'react';
+import Map, { Marker, Popup, NavigationControl } from 'react-map-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { Restaurant } from '@/lib/api';
 
@@ -21,13 +21,50 @@ export default function MapComponent({
   onMapMove,
 }: MapComponentProps) {
   const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || '';
+  const mapRef = useRef<any>(null);
+  
+  const [viewState, setViewState] = useState({
+    longitude: center.lng,
+    latitude: center.lat,
+    zoom: 16, // Zoom level for ~0.2 mile radius view
+  });
+  const lastCenterRef = useRef({ lat: center.lat, lng: center.lng });
+
+  // Update viewState when center prop changes (e.g., from address search)
+  // Only update center coordinates, preserve zoom level
+  useEffect(() => {
+    const centerChanged = 
+      Math.abs(lastCenterRef.current.lat - center.lat) > 0.0001 ||
+      Math.abs(lastCenterRef.current.lng - center.lng) > 0.0001;
+    
+    if (centerChanged) {
+      lastCenterRef.current = { lat: center.lat, lng: center.lng };
+      setViewState(prev => ({
+        longitude: center.lng,
+        latitude: center.lat,
+        zoom: prev.zoom, // Preserve current zoom level - don't reset on center changes
+      }));
+    }
+  }, [center.lng, center.lat]);
 
   const handleMapMove = useCallback(
     (evt: any) => {
-      if (onMapMove && evt.viewState) {
-        const { longitude, latitude } = evt.viewState;
-        if (longitude !== undefined && latitude !== undefined) {
-          onMapMove({ lat: latitude, lng: longitude });
+      if (evt.viewState) {
+        setViewState(evt.viewState);
+        if (onMapMove) {
+          const { longitude, latitude } = evt.viewState;
+          if (longitude !== undefined && latitude !== undefined) {
+            // Only update parent center if it's a significant pan (not just zoom)
+            const currentCenter = lastCenterRef.current;
+            const distance = Math.sqrt(
+              Math.pow(latitude - currentCenter.lat, 2) + 
+              Math.pow(longitude - currentCenter.lng, 2)
+            );
+            // Only update if moved more than ~100 meters
+            if (distance > 0.001) {
+              onMapMove({ lat: latitude, lng: longitude });
+            }
+          }
         }
       }
     },
@@ -74,18 +111,64 @@ export default function MapComponent({
     );
   }
 
+  // Force map resize when container size changes
+  useEffect(() => {
+    const resizeMap = () => {
+      if (mapRef.current) {
+        try {
+          const map = mapRef.current.getMap();
+          if (map && typeof map.resize === 'function') {
+            // Use requestAnimationFrame for smoother resize
+            requestAnimationFrame(() => {
+              map.resize();
+            });
+          }
+        } catch (e) {
+          // Map might not be ready yet, ignore
+        }
+      }
+    };
+
+    // Listen for window resize events (including programmatically triggered ones from parent)
+    window.addEventListener('resize', resizeMap);
+    
+    // Also resize after a short delay to handle initial load and container size changes
+    const timeoutId = setTimeout(resizeMap, 200);
+    
+    return () => {
+      clearTimeout(timeoutId);
+      window.removeEventListener('resize', resizeMap);
+    };
+  }, []);
+
   return (
     <Map
+      ref={mapRef}
       mapboxAccessToken={mapboxToken}
-      initialViewState={{
-        longitude: center.lng,
-        latitude: center.lat,
-        zoom: 13,
-      }}
+      {...viewState}
       style={{ width: '100%', height: '100%' }}
       mapStyle="mapbox://styles/mapbox/streets-v12"
       onMove={handleMapMove}
+      onLoad={() => {
+        // Resize map after it loads
+        if (mapRef.current) {
+          const map = mapRef.current.getMap();
+          if (map) {
+            requestAnimationFrame(() => {
+              map.resize();
+            });
+          }
+        }
+      }}
+      scrollZoom={true}
+      doubleClickZoom={true}
+      touchZoom={true}
+      touchRotate={false}
+      dragRotate={false}
+      minZoom={10}
+      maxZoom={20}
     >
+      <NavigationControl position="top-right" />
       {markers}
       {selectedRestaurant && (
         <Popup
