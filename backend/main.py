@@ -1,4 +1,5 @@
 import os
+import time
 from typing import Optional, List
 from fastapi import FastAPI, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -95,25 +96,46 @@ async def list_restaurants(
         if cuisine_type:
             request_params["keyword"] = cuisine_type
         
-        # Google Places Nearby Search
-        places_result = gmaps.places_nearby(**request_params)
+        # Google Places Nearby Search with pagination
+        all_results = []
+        next_page_token = None
+        max_pages = 1  # Fetch up to 20 pages (400 results) to get comprehensive coverage
         
-        # Check API response status
-        api_status = places_result.get("status")
-        error_message = places_result.get("error_message")
-        
-        # Handle API errors
-        if api_status not in ["OK", "ZERO_RESULTS"]:
-            error_msg = error_message or f"Google Places API error: {api_status}"
-            if api_status == "REQUEST_DENIED":
-                error_msg += " - Check your API key and ensure Places API is enabled"
-            elif api_status == "INVALID_REQUEST":
-                error_msg += " - Check your request parameters"
-            raise HTTPException(status_code=400, detail=error_msg)
+        for page in range(max_pages):
+            # Build request params for this page
+            page_params = request_params.copy()
+            if next_page_token:
+                page_params["page_token"] = next_page_token
+                # Google requires a short delay between pagination requests
+                time.sleep(2)
+            
+            places_result = gmaps.places_nearby(**page_params)
+            
+            # Check API response status
+            api_status = places_result.get("status")
+            error_message = places_result.get("error_message")
+            
+            # Handle API errors
+            if api_status not in ["OK", "ZERO_RESULTS"]:
+                error_msg = error_message or f"Google Places API error: {api_status}"
+                if api_status == "REQUEST_DENIED":
+                    error_msg += " - Check your API key and ensure Places API is enabled"
+                elif api_status == "INVALID_REQUEST":
+                    error_msg += " - Check your request parameters"
+                raise HTTPException(status_code=400, detail=error_msg)
+            
+            # Add results from this page
+            page_results = places_result.get("results", [])
+            all_results.extend(page_results)
+            
+            # Check if there are more pages
+            next_page_token = places_result.get("next_page_token")
+            if not next_page_token:
+                break  # No more pages
         
         restaurants = []
         
-        for place in places_result.get("results", []):
+        for place in all_results:
             # Extract price level if available
             price_level = place.get("price_level")
             
@@ -159,22 +181,9 @@ async def get_restaurant_details(place_id: str) -> RestaurantDetail:
     Get detailed information about a specific restaurant, including menu data if available.
     """
     try:
-        # Get place details
+        # Get place details (don't specify fields to get all available data)
         place_details = gmaps.place(
             place_id=place_id,
-            fields=[
-                "name",
-                "formatted_address",
-                "geometry",
-                "rating",
-                "price_level",
-                "types",
-                "user_ratings_total",
-                "formatted_phone_number",
-                "website",
-                "opening_hours",
-                "photos",
-            ],
         )
         
         result = place_details.get("result", {})
